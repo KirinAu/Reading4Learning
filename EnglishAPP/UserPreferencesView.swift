@@ -4,6 +4,7 @@ struct UserPreferencesView: View {
     @State private var currentQuestionIndex: Int = 0
     @State private var selectedAnswers: [Int] = Array(repeating: -1, count: 5)
     @State private var isLoading: Bool = false
+    @Environment(\.dismiss) private var dismiss
     
     private let questions = [
         Question(
@@ -49,7 +50,7 @@ struct UserPreferencesView: View {
                     
                     Button("跳过") {
                         // 跳过所有问题，直接进入主应用
-                        enterMainApp()
+                        dismiss()
                     }
                     .font(AppFonts.body(16, weight: .medium))
                     .foregroundColor(AppColors.textSecondary)
@@ -158,8 +159,8 @@ struct UserPreferencesView: View {
         // 然后进入主应用
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             isLoading = false
-            // TODO: 跳转到主应用
-            print("进入主应用")
+            // 关闭当前页面，返回到主应用
+            dismiss()
         }
     }
 }

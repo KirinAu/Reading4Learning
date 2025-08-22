@@ -1,13 +1,12 @@
 import SwiftUI
 
-struct VerificationCodeView: View {
+struct ResetPasswordVerificationView: View {
     @Binding var isPresented: Bool
     let email: String
-    let password: String
-    let username: String
-    let operation: String
-    let onVerificationSuccess: () -> Void
+    let onSuccess: () -> Void
     
+    @State private var newPassword: String = ""
+    @State private var confirmNewPassword: String = ""
     @State private var code: [String] = Array(repeating: "", count: 6)
     @State private var currentIndex: Int = 0
     @State private var isLoading: Bool = false
@@ -16,8 +15,6 @@ struct VerificationCodeView: View {
     @State private var isSendingCode: Bool = false
     @State private var keyboardText: String = ""
     @State private var isError: Bool = false
-    @State private var showSuccessView: Bool = false
-    @State private var showPreferences: Bool = false
     @State private var showErrorAlert: Bool = false
     @State private var errorAlertMessage: String = ""
     @FocusState private var isTextFieldFocused: Bool
@@ -106,33 +103,31 @@ struct VerificationCodeView: View {
                                 }
                         }
                         
-                        if let errorMessage {
-                            Text(errorMessage)
-                                .font(AppFonts.caption())
-                                .foregroundColor(.red)
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 12)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .fill(Color.red.opacity(0.1))
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(Color.red.opacity(0.3), lineWidth: 1)
-                                )
+                        // New Password Input
+                        VStack(spacing: 16) {
+                            Text("设置新密码")
+                                .font(AppFonts.body(15, weight: .medium))
+                                .foregroundColor(AppColors.textPrimary)
+                            
+                            SecureField("新密码", text: $newPassword)
+                                .modifier(TextFieldStyleConfig.inputField(icon: "lock"))
+                            
+                            SecureField("确认新密码", text: $confirmNewPassword)
+                                .modifier(TextFieldStyleConfig.inputField(icon: "lock"))
                         }
+                        .padding(.horizontal, 20)
                         
                         // Verify Button
-                        Button(action: verifyCode) {
+                        Button(action: resetPassword) {
                             HStack {
                                 if isLoading {
                                     ProgressView().tint(.white)
                                 }
-                                Text("验证")
+                                Text("重置密码")
                             }
                         }
                         .buttonStyle(PrimaryButtonStyle())
-                        .disabled(code.joined().count != 6 || isLoading)
+                        .disabled(code.joined().count != 6 || newPassword.isEmpty || confirmNewPassword.isEmpty || newPassword != confirmNewPassword || isLoading)
                         .padding(.horizontal, 20)
                         
                         // Resend Info
@@ -153,25 +148,6 @@ struct VerificationCodeView: View {
                 }
             }
         }
-        .fullScreenCover(isPresented: $showSuccessView) {
-            RegistrationSuccessView(
-                isPresented: $showSuccessView,
-                email: email,
-                password: password,
-                onBackToLogin: { email, password in
-                    // 传递信息回登录页面
-                    onVerificationSuccess()
-                }
-            )
-        }
-        .fullScreenCover(isPresented: $showPreferences) {
-            UserPreferencesView()
-                .onDisappear {
-                    // 当用户偏好设置页面关闭时，调用成功回调
-                    onVerificationSuccess()
-                    isPresented = false
-                }
-        }
         .alert("错误", isPresented: $showErrorAlert) {
             Button("确定") {
                 showErrorAlert = false
@@ -188,9 +164,13 @@ struct VerificationCodeView: View {
         }
     }
     
-    private func verifyCode() {
+    private func resetPassword() {
         let verificationCode = code.joined()
         guard verificationCode.count == 6 else { return }
+        guard newPassword == confirmNewPassword else {
+            errorMessage = "两次输入的密码不一致"
+            return
+        }
         
         isLoading = true
         errorMessage = nil
@@ -198,48 +178,18 @@ struct VerificationCodeView: View {
         
         Task {
             do {
-                switch operation {
-                case "login":
-                    let token = try await APIService.shared.login(email: email, password: password, verificationCode: verificationCode)
-                    UserDefaults.standard.set(token, forKey: "userToken")
-                    
-                    // 检查是否是第一次登录
-                    let isFirstLogin = JWTDecoder.isFirstLogin(jwt: token)
-                    
-                    DispatchQueue.main.async {
-                        isLoading = false
-                        isError = false
-                        if isFirstLogin {
-                            // 第一次登录，显示用户偏好设置
-                            showPreferences = true
-                        } else {
-                            // 不是第一次登录，直接进入主应用
-                            onVerificationSuccess()
-                            isPresented = false
-                        }
-                    }
-                    
-                case "register":
-                    _ = try await APIService.shared.register(username: username, email: email, password: password, verificationCode: verificationCode)
-                    
-                    DispatchQueue.main.async {
-                        isLoading = false
-                        isError = false
-                        showSuccessView = true
-                    }
-                    
-                case "reset":
-                    _ = try await APIService.shared.resetPassword(email: email, password: "", confirmPassword: "", verificationCode: verificationCode)
-                    
-                    DispatchQueue.main.async {
-                        isLoading = false
-                        isError = false
-                        onVerificationSuccess()
-                        isPresented = false
-                    }
-                    
-                default:
-                    break
+                _ = try await APIService.shared.resetPassword(
+                    email: email,
+                    password: newPassword,
+                    confirmPassword: confirmNewPassword,
+                    verificationCode: verificationCode
+                )
+                
+                DispatchQueue.main.async {
+                    isLoading = false
+                    isError = false
+                    onSuccess()
+                    isPresented = false
                 }
             } catch {
                 DispatchQueue.main.async {
@@ -247,7 +197,7 @@ struct VerificationCodeView: View {
                     isError = true
                     
                     // 显示错误弹窗
-                    errorAlertMessage = (error as? APIError)?.message ?? "验证失败"
+                    errorAlertMessage = (error as? APIError)?.message ?? "重置密码失败"
                     showErrorAlert = true
                     
                     // 清空验证码输入框
@@ -265,7 +215,7 @@ struct VerificationCodeView: View {
         isSendingCode = true
         Task {
             do {
-                try await APIService.shared.sendVerificationCode(email: email, operation: operation)
+                try await APIService.shared.sendVerificationCode(email: email, operation: "reset")
                 DispatchQueue.main.async {
                     isSendingCode = false
                     startCountdown()
@@ -310,12 +260,7 @@ struct VerificationCodeView: View {
             code[index] = ""
         }
         
-        // 自动提交验证码
-        if limitedNumbers.count == 6 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                verifyCode()
-            }
-        }
+        // 不自动提交，让用户手动点击按钮
         
         // 更新当前选中索引
         currentIndex = min(limitedNumbers.count, 5)
@@ -327,75 +272,11 @@ struct VerificationCodeView: View {
     }
 }
 
-struct CodeInputBox: View {
-    @Binding var text: String
-    let isSelected: Bool
-    let onTap: () -> Void
-    let isError: Bool
-    
-    @State private var shakeOffset: CGFloat = 0
-    
-    var body: some View {
-        Button(action: onTap) {
-            Text(text.isEmpty ? "" : text)
-                .font(AppFonts.title(24))
-                .foregroundColor(AppColors.textPrimary)
-                .frame(width: 50, height: 60)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.white)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(
-                                    isError ? Color.red : (isSelected ? AppColors.primary : AppColors.border),
-                                    lineWidth: isSelected ? 2 : 1
-                                )
-                        )
-                )
-                .shadow(
-                    color: isError ? Color.red.opacity(0.2) : (isSelected ? AppColors.primary.opacity(0.2) : Color.clear),
-                    radius: isSelected ? 8 : 0,
-                    x: 0,
-                    y: isSelected ? 4 : 0
-                )
-        }
-        .buttonStyle(PlainButtonStyle())
-        .scaleEffect(isSelected ? 1.05 : 1.0)
-        .offset(x: shakeOffset)
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
-        .onChange(of: isError) { newValue in
-            if newValue {
-                withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.2, blendDuration: 0.1)) {
-                    shakeOffset = 10
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.2, blendDuration: 0.1)) {
-                        shakeOffset = -10
-                    }
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.2, blendDuration: 0.1)) {
-                        shakeOffset = 10
-                    }
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.2, blendDuration: 0.1)) {
-                        shakeOffset = 0
-                    }
-                }
-            }
-        }
-    }
-}
-
 #Preview {
-    VerificationCodeView(
+    ResetPasswordVerificationView(
         isPresented: .constant(true),
-        email: "test@example.com",
-        password: "password123",
-        username: "testuser",
-        operation: "login"
+        email: "test@example.com"
     ) {
-        print("Verification successful")
+        print("重置密码成功")
     }
 }

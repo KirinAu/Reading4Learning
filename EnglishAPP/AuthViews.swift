@@ -15,6 +15,8 @@ struct AuthView: View {
     @State private var showMainApp: Bool = false
     @State private var autoFillEmail: String = ""
     @State private var autoFillPassword: String = ""
+    @State private var isLoggedIn: Bool = false
+    @State private var showResetPassword: Bool = false
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -109,10 +111,12 @@ struct AuthView: View {
                         .buttonStyle(PrimaryButtonStyle())
 
                         if isLogin {
-                            Button("忘记密码？") { /* TODO: push reset */ }
-                                .font(AppFonts.caption())
-                                .foregroundColor(AppColors.textSecondary)
-                                .padding(.top, 2)
+                            Button("忘记密码？") {
+                                showResetPassword = true
+                            }
+                            .font(AppFonts.caption())
+                            .foregroundColor(AppColors.textSecondary)
+                            .padding(.top, 2)
                         }
                     }
                     .padding(18)
@@ -154,7 +158,18 @@ struct AuthView: View {
             .ignoresSafeArea(edges: .bottom)
         }
         .fullScreenCover(isPresented: $showMainApp) {
-            UserPreferencesView()
+            MainAppView()
+                .onDisappear {
+                    // 当主应用页面关闭时，检查是否已退出登录
+                    if !UserDefaults.standard.bool(forKey: "isLoggedIn") {
+                        // 清除登录状态
+                        isLoggedIn = false
+                        showMainApp = false
+                    }
+                }
+        }
+        .sheet(isPresented: $showResetPassword) {
+            ResetPasswordView(isPresented: $showResetPassword)
         }
         .sheet(isPresented: $showVerificationCode) {
             VerificationCodeView(
@@ -166,8 +181,24 @@ struct AuthView: View {
             ) {
                 // 验证成功后的处理
                 if isLogin {
-                    // 登录成功，进入主应用
-                    showMainApp = true
+                    // 登录成功，检查是否是第一次登录
+                    if let token = UserDefaults.standard.string(forKey: "userToken") {
+                        let isFirstLogin = JWTDecoder.isFirstLogin(jwt: token)
+                        if isFirstLogin {
+                            // 第一次登录，显示用户偏好设置
+                            showMainApp = true
+                        } else {
+                            // 不是第一次登录，直接进入主应用
+                            showMainApp = true
+                        }
+                        // 设置登录状态
+                        UserDefaults.standard.set(true, forKey: "isLoggedIn")
+                        isLoggedIn = true
+                    } else {
+                        showMainApp = true
+                        UserDefaults.standard.set(true, forKey: "isLoggedIn")
+                        isLoggedIn = true
+                    }
                 } else {
                     // 注册成功，自动填充登录信息
                     autoFillEmail = email
