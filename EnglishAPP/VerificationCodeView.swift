@@ -17,7 +17,6 @@ struct VerificationCodeView: View {
     @State private var keyboardText: String = ""
     @State private var isError: Bool = false
     @State private var showSuccessView: Bool = false
-    @State private var showPreferences: Bool = false
     @State private var showErrorAlert: Bool = false
     @State private var errorAlertMessage: String = ""
     @FocusState private var isTextFieldFocused: Bool
@@ -153,7 +152,7 @@ struct VerificationCodeView: View {
                 }
             }
         }
-        .fullScreenCover(isPresented: $showSuccessView) {
+        .sheet(isPresented: $showSuccessView) {
             RegistrationSuccessView(
                 isPresented: $showSuccessView,
                 email: email,
@@ -163,14 +162,6 @@ struct VerificationCodeView: View {
                     onVerificationSuccess()
                 }
             )
-        }
-        .fullScreenCover(isPresented: $showPreferences) {
-            UserPreferencesView()
-                .onDisappear {
-                    // 当用户偏好设置页面关闭时，调用成功回调
-                    onVerificationSuccess()
-                    isPresented = false
-                }
         }
         .alert("错误", isPresented: $showErrorAlert) {
             Button("确定") {
@@ -203,43 +194,25 @@ struct VerificationCodeView: View {
                     let token = try await APIService.shared.login(email: email, password: password, verificationCode: verificationCode)
                     UserDefaults.standard.set(token, forKey: "userToken")
                     
-                    // 检查是否是第一次登录
-                    let isFirstLogin = JWTDecoder.isFirstLogin(jwt: token)
-                    
-                    DispatchQueue.main.async {
-                        isLoading = false
-                        isError = false
-                        if isFirstLogin {
-                            // 第一次登录，显示用户偏好设置
-                            showPreferences = true
-                        } else {
-                            // 不是第一次登录，直接进入主应用
-                            onVerificationSuccess()
-                            isPresented = false
-                        }
-                    }
-                    
                 case "register":
                     _ = try await APIService.shared.register(username: username, email: email, password: password, verificationCode: verificationCode)
-                    
-                    DispatchQueue.main.async {
-                        isLoading = false
-                        isError = false
-                        showSuccessView = true
-                    }
                     
                 case "reset":
                     _ = try await APIService.shared.resetPassword(email: email, password: "", confirmPassword: "", verificationCode: verificationCode)
                     
-                    DispatchQueue.main.async {
-                        isLoading = false
-                        isError = false
+                default:
+                    break
+                }
+                
+                DispatchQueue.main.async {
+                    isLoading = false
+                    isError = false
+                    if operation == "register" {
+                        showSuccessView = true
+                    } else {
                         onVerificationSuccess()
                         isPresented = false
                     }
-                    
-                default:
-                    break
                 }
             } catch {
                 DispatchQueue.main.async {

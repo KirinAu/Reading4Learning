@@ -181,3 +181,174 @@ struct LottieWrapperView: UIViewRepresentable {
         imageView.layer.add(translationAnimation, forKey: "translationAnimation")
     }
 }
+
+// MARK: - Auto Play Lottie View
+struct AutoPlayLottieView: View {
+    let animationName: String
+    let size: CGSize
+    @State private var hasPlayed: Bool = false
+    
+    var body: some View {
+        AutoPlayLottieWrapperView(
+            animationName: animationName,
+            hasPlayed: $hasPlayed
+        )
+        .frame(width: size.width, height: size.height)
+        .onAppear {
+            hasPlayed = false
+        }
+    }
+}
+
+struct AutoPlayLottieWrapperView: UIViewRepresentable {
+    let animationName: String
+    @Binding var hasPlayed: Bool
+    
+    func makeUIView(context: Context) -> UIView {
+        let containerView = UIView()
+        containerView.backgroundColor = .clear
+        containerView.isOpaque = false
+        
+        if let animation = loadLottieAnimation() {
+            let animationView = createLottieView(with: animation)
+            containerView.addSubview(animationView)
+            
+            animationView.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                animationView.topAnchor.constraint(equalTo: containerView.topAnchor),
+                animationView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+                animationView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+                animationView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor)
+            ])
+            
+            context.coordinator.animationView = animationView
+        } else {
+            let fallbackView = createAnimatedFallbackView()
+            containerView.addSubview(fallbackView)
+            
+            fallbackView.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                fallbackView.topAnchor.constraint(equalTo: containerView.topAnchor),
+                fallbackView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+                fallbackView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+                fallbackView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor)
+            ])
+            
+            context.coordinator.fallbackView = fallbackView
+        }
+        
+        return containerView
+    }
+    
+    func updateUIView(_ uiView: UIView, context: Context) {
+        if let lottieView = context.coordinator.animationView {
+            updateLottieAnimation(lottieView)
+        } else if let fallbackView = context.coordinator.fallbackView {
+            updateFallbackAnimation(fallbackView)
+        }
+    }
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+    
+    class Coordinator {
+        var animationView: UIView?
+        var fallbackView: UIView?
+    }
+    
+    private func loadLottieAnimation() -> Any? {
+        if let path = Bundle.main.path(forResource: animationName, ofType: "json") {
+            return path
+        }
+        
+        if let data = NSDataAsset(name: animationName)?.data {
+            return data
+        }
+        
+        return nil
+    }
+    
+    private func createLottieView(with animation: Any) -> UIView {
+        #if canImport(Lottie)
+        if let path = animation as? String,
+           let lottieAnimation = LottieAnimation.filepath(path) {
+            let animationView = LottieAnimationView()
+            animationView.animation = lottieAnimation
+            animationView.loopMode = .playOnce
+            animationView.contentMode = .scaleAspectFit
+            animationView.backgroundColor = .clear
+            animationView.currentProgress = 0.0
+            return animationView
+        }
+        
+        if let data = animation as? Data,
+           let lottieAnimation = try? LottieAnimation.from(data: data) {
+            let animationView = LottieAnimationView()
+            animationView.animation = lottieAnimation
+            animationView.loopMode = .playOnce
+            animationView.contentMode = .scaleAspectFit
+            animationView.backgroundColor = .clear
+            animationView.currentProgress = 0.0
+            return animationView
+        }
+        #endif
+        
+        return createAnimatedFallbackView()
+    }
+    
+    private func updateLottieAnimation(_ view: UIView) {
+        #if canImport(Lottie)
+        if let lottieView = view as? LottieAnimationView {
+            if !hasPlayed {
+                lottieView.play { finished in
+                    if finished {
+                        hasPlayed = true
+                    }
+                }
+            }
+        }
+        #endif
+    }
+    
+    private func updateFallbackAnimation(_ view: UIView) {
+        if let imageView = view.subviews.first as? UIImageView {
+            if !hasPlayed {
+                let animation = CABasicAnimation(keyPath: "transform.scale")
+                animation.fromValue = 1.0
+                animation.toValue = 1.2
+                animation.duration = 0.5
+                animation.autoreverses = true
+                animation.fillMode = .forwards
+                animation.isRemovedOnCompletion = false
+                
+                imageView.layer.add(animation, forKey: "autoPlayAnimation")
+                
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    hasPlayed = true
+                }
+            }
+        }
+    }
+    
+    private func createAnimatedFallbackView() -> UIView {
+        let containerView = UIView()
+        
+        let imageView = UIImageView()
+        imageView.image = UIImage(systemName: "envelope.fill")
+        imageView.tintColor = UIColor(AppColors.primary)
+        imageView.contentMode = .scaleAspectFit
+        
+        containerView.addSubview(imageView)
+        
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            imageView.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
+            imageView.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
+            imageView.widthAnchor.constraint(equalTo: containerView.widthAnchor, multiplier: 0.6),
+            imageView.heightAnchor.constraint(equalTo: containerView.heightAnchor, multiplier: 0.6)
+        ])
+        
+        return containerView
+    }
+}

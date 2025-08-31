@@ -92,11 +92,6 @@ final class APIService {
         let (data, response) = try await urlSession.data(for: req)
         guard let http = response as? HTTPURLResponse else { throw APIError.server("无响应") }
         
-        // 打印响应数据用于调试
-        if let responseString = String(data: data, encoding: .utf8) {
-            print("API Response: \(responseString)")
-        }
-        
         // 尝试解析API响应
         if let apiResponse = try? JSONDecoder().decode(APIResponse<T>.self, from: data) {
             if apiResponse.success {
@@ -119,7 +114,6 @@ final class APIService {
         do {
             return try JSONDecoder().decode(T.self, from: data)
         } catch {
-            print("Decoding error: \(error)")
             throw APIError.decoding
         }
     }
@@ -134,11 +128,6 @@ final class APIService {
         let (data, response) = try await urlSession.data(for: req)
         guard let http = response as? HTTPURLResponse else { throw APIError.server("无响应") }
         
-        // 打印响应数据用于调试
-        if let responseString = String(data: data, encoding: .utf8) {
-            print("API Response: \(responseString)")
-        }
-        
         // 尝试解析API响应
         if let apiResponse = try? JSONDecoder().decode(APIResponse<String>.self, from: data) {
             if !apiResponse.success {
@@ -149,6 +138,74 @@ final class APIService {
         guard (200..<300).contains(http.statusCode) else {
             let message = String(data: data, encoding: .utf8) ?? "服务器错误 \(http.statusCode)"
             throw APIError.server(message)
+        }
+    }
+
+    // MARK: - GET Requests
+
+    private func requestGET<T: Decodable>(path: String, queryItems: [URLQueryItem]) async throws -> T {
+        var components = URLComponents(url: try buildURL(path: path), resolvingAgainstBaseURL: true)
+        components?.queryItems = queryItems
+        guard let url = components?.url else { throw APIError.invalidURL }
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        let (data, response) = try await urlSession.data(for: req)
+        guard let http = response as? HTTPURLResponse else { throw APIError.server("无响应") }
+        guard (200..<300).contains(http.statusCode) else {
+            let message = String(data: data, encoding: .utf8) ?? "服务器错误 \(http.statusCode)"
+            throw APIError.server(message)
+        }
+        do {
+            return try JSONDecoder().decode(T.self, from: data)
+        } catch {
+            throw APIError.decoding
+        }
+    }
+
+    // MARK: - Articles
+
+    struct PageList<T: Decodable>: Decodable {
+        let pageNum: Int
+        let pageSize: Int
+        let total: Int
+        let totalPages: Int?
+        let list: [T]
+    }
+
+    struct Article: Identifiable, Decodable {
+        let id: Int
+        let transcriptId: String
+        let title: String
+        let speaker: String?
+        let url: String?
+        let description: String?
+        let duration: String?
+        let views: Int?
+        let publishedAt: String?
+        let language: String?
+        let englishTranscript: String?
+        let chineseTranscript: String?
+        let topics: [String]?
+        let createDate: String?
+        let updateDate: String?
+        let imgUrl: String?
+    }
+
+    func fetchArticles(pageNum: Int, pageSize: Int, keyword: String) async throws -> PageList<Article> {
+        // 返回结构：APIResponse<PageList<Article>>
+        typealias ArticlesResponse = APIResponse<PageList<Article>>
+        let response: ArticlesResponse = try await requestGET(
+            path: "/api/articles/list",
+            queryItems: [
+                URLQueryItem(name: "pageNum", value: String(pageNum)),
+                URLQueryItem(name: "pageSize", value: String(pageSize)),
+                URLQueryItem(name: "keyword", value: keyword)
+            ]
+        )
+        if response.success, let data = response.data {
+            return data
+        } else {
+            throw APIError.server(response.message)
         }
     }
 }
