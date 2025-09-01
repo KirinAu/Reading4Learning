@@ -181,35 +181,20 @@ struct DetailSegmentButton: View {
             } 
         }) {
             Text(title)
-                .font(AppFonts.cardSubtitle(15))
-                .fontWeight(selectedIndex == index ? .semibold : .medium)
+                .font(.system(size: 15, weight: selectedIndex == index ? .semibold : .medium))
                 .foregroundColor(selectedIndex == index ? .white : AppColors.textSecondary)
                 .padding(.vertical, 12)
                 .frame(maxWidth: .infinity)
                 .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .fill(
                             selectedIndex == index ? 
                             AppColors.primary : 
-                            AppColors.cardBackground
+                            Color.clear
                         )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .stroke(
-                                    selectedIndex == index ? 
-                                    Color.clear : 
-                                    AppColors.cardBorder, 
-                                    lineWidth: 0.5
-                                )
-                        )
-                )
-                .appShadow(
-                    selectedIndex == index ? 
-                    AppShadows.cardMedium : 
-                    AppShadows.cardLight
                 )
         }
-        .buttonStyle(CardButtonStyle())
+        .buttonStyle(PlainButtonStyle())
     }
 }
 
@@ -674,75 +659,81 @@ final class ArticlesViewModel: ObservableObject {
 struct ArticleDetailView: View {
     typealias Article = APIService.Article
     let article: Article
-    @State private var mode: Int = 0 // 0: 对照 1: 英文 2: 中文
+    @State private var mode: Int = 1 // 0: 对照 1: 英文 2: 中文 - 默认显示英文
     @State private var fontScale: Double = 1.0
+    @State private var isAnimating: Bool = false
     
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                // Header Image - 增强视觉效果
-                ZStack(alignment: .bottomLeading) {
-                    AsyncImage(url: URL(string: article.imgUrl ?? "")) { phase in
-                        switch phase {
-                        case .success(let image): 
-                            image
-                                .resizable()
-                                .scaledToFill()
-                        case .empty: 
-                            ZStack { 
-                                AppColors.cardBackgroundSecondary
-                                ProgressView()
-                                    .scaleEffect(1.2)
-                            }
-                        case .failure: 
-                            ZStack { 
-                                AppColors.cardBackgroundSecondary
-                                VStack(spacing: 12) {
-                                    Image(systemName: "photo")
-                                        .font(.system(size: 32))
-                                        .foregroundColor(AppColors.textTertiary)
-                                    Text("图片加载失败")
-                                        .font(AppFonts.cardCaption(12))
-                                        .foregroundColor(AppColors.textTertiary)
-                                }
-                            }
-                        @unknown default: 
-                            AppColors.cardBackgroundSecondary
+            VStack(alignment: .leading, spacing: 0) {
+                // Header Image - 无圆角，全宽显示
+                AsyncImage(url: URL(string: article.imgUrl ?? "")) { phase in
+                    switch phase {
+                    case .success(let image): 
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    case .empty: 
+                        ZStack { 
+                            Color.gray.opacity(0.1)
+                            ProgressView()
+                                .scaleEffect(1.2)
                         }
+                    case .failure: 
+                        ZStack { 
+                            Color.gray.opacity(0.1)
+                            VStack(spacing: 12) {
+                                Image(systemName: "photo")
+                                    .font(.system(size: 32))
+                                    .foregroundColor(AppColors.textTertiary)
+                                Text("图片加载失败")
+                                    .font(AppFonts.cardCaption(12))
+                                    .foregroundColor(AppColors.textTertiary)
+                            }
+                        }
+                    @unknown default: 
+                        Color.gray.opacity(0.1)
                     }
-                    .frame(height: 240)
-                    .clipped()
-                    
-                    // 底部渐变遮罩
-                    LinearGradient(
-                        colors: [Color.clear, Color.black.opacity(0.3)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .frame(height: 80)
-                    
-                    // 底部信息
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack(spacing: 12) {
+                }
+                .frame(height: 240)
+                .clipped()
+
+                // Content Area - 左右留更多空，遵循iOS设计原则
+                VStack(alignment: .leading, spacing: 32) {
+                    // Title Section
+                    VStack(alignment: .leading, spacing: 20) {
+                        // 标题
+                        Text(article.title)
+                            .font(.system(size: 32 * fontScale, weight: .bold, design: .serif))
+                            .foregroundColor(AppColors.textPrimary)
+                            .multilineTextAlignment(.leading)
+                            .lineLimit(nil)
+                            .padding(.top, 32)
+                            .opacity(isAnimating ? 1.0 : 0.0)
+                            .offset(y: isAnimating ? 0 : 30)
+                            .animation(.easeOut(duration: 0.6).delay(0.1), value: isAnimating)
+
+                        // 文章信息
+                        HStack(spacing: 16) {
                             if let speaker = article.speaker, !speaker.isEmpty {
                                 HStack(spacing: 6) {
                                     Image(systemName: "person.circle.fill")
-                                        .font(.system(size: 16))
-                                        .foregroundColor(.white)
+                                        .font(.system(size: 14))
+                                        .foregroundColor(AppColors.textSecondary)
                                     Text(speaker)
-                                        .font(AppFonts.cardSubtitle(14))
-                                        .foregroundColor(.white)
+                                        .font(.system(size: 14, weight: .medium))
+                                        .foregroundColor(AppColors.textSecondary)
                                 }
                             }
                             
                             if let duration = article.duration, !duration.isEmpty {
                                 HStack(spacing: 6) {
                                     Image(systemName: "clock.fill")
-                                        .font(.system(size: 14))
-                                        .foregroundColor(.white)
+                                        .font(.system(size: 12))
+                                        .foregroundColor(AppColors.textSecondary)
                                     Text("\(duration)s")
-                                        .font(AppFonts.cardCaption(12))
-                                        .foregroundColor(.white)
+                                        .font(.system(size: 14, weight: .medium))
+                                        .foregroundColor(AppColors.textSecondary)
                                 }
                             }
                             
@@ -750,94 +741,106 @@ struct ArticleDetailView: View {
                             
                             HStack(spacing: 6) {
                                 Image(systemName: "eye.fill")
-                                    .font(.system(size: 14))
-                                    .foregroundColor(.white)
+                                    .font(.system(size: 12))
+                                    .foregroundColor(AppColors.textSecondary)
                                 Text("\(article.views ?? 0)")
-                                    .font(AppFonts.cardCaption(12))
-                                    .foregroundColor(.white)
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(AppColors.textSecondary)
                             }
                         }
+                        .opacity(isAnimating ? 1.0 : 0.0)
+                        .offset(y: isAnimating ? 0 : 20)
+                        .animation(.easeOut(duration: 0.6).delay(0.2), value: isAnimating)
+
+                        // 主题标签
+                        if let topics = article.topics, !topics.isEmpty {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    ForEach(topics, id: \.self) { tag in
+                                        Text(tag)
+                                            .font(.system(size: 12, weight: .medium))
+                                            .foregroundColor(AppColors.primary)
+                                            .padding(.horizontal, 8)
+                                            .padding(.vertical, 4)
+                                            .background(
+                                                RoundedRectangle(cornerRadius: 6)
+                                                    .fill(AppColors.primary.opacity(0.1))
+                                            )
+                                    }
+                                }
+                                .padding(.horizontal, 2)
+                            }
+                            .opacity(isAnimating ? 1.0 : 0.0)
+                            .offset(y: isAnimating ? 0 : 15)
+                            .animation(.easeOut(duration: 0.6).delay(0.3), value: isAnimating)
+                        }
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 16)
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .appShadow(AppShadows.cardStrong)
-                .padding(.horizontal, 16)
+                    .padding(.horizontal, 28)
 
-                // Title & Meta - 增强卡片样式
-                VStack(alignment: .leading, spacing: 16) {
-                    // 标题
-                    Text(article.title)
-                        .font(AppFonts.title(24))
-                        .fontWeight(.bold)
-                        .foregroundColor(AppColors.textPrimary)
-                        .multilineTextAlignment(.leading)
-                        .lineLimit(nil)
+                    // Mode Switch - iOS风格的分段控制器
+                    HStack(spacing: 0) {
+                        DetailSegmentButton(title: "对照", index: 0, selectedIndex: $mode)
+                        DetailSegmentButton(title: "英文", index: 1, selectedIndex: $mode)
+                        DetailSegmentButton(title: "中文", index: 2, selectedIndex: $mode)
+                    }
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 8)
+                    .opacity(isAnimating ? 1.0 : 0.0)
+                    .offset(y: isAnimating ? 0 : 20)
+                    .animation(.easeOut(duration: 0.6).delay(0.4), value: isAnimating)
 
-                    // 主题标签
-                    if let topics = article.topics, !topics.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 10) {
-                                ForEach(topics, id: \.self) { tag in
-                                    Text(tag)
-                                        .font(AppFonts.cardSubtitle(13))
-                                        .fontWeight(.medium)
+                    // Content - 无容器包裹，直接显示文本
+                    VStack(alignment: .leading, spacing: 0) {
+                        if mode == 0 {
+                            ParallelTextView(english: article.englishTranscript ?? "", chinese: article.chineseTranscript ?? "", fontScale: fontScale)
+                        } else if mode == 1 {
+                            ArticleTextView(text: article.englishTranscript ?? "", fontScale: fontScale)
+                        } else {
+                            ArticleTextView(text: article.chineseTranscript ?? "", fontScale: fontScale)
+                        }
+                    }
+                    .padding(.horizontal, 28)
+                    .opacity(isAnimating ? 1.0 : 0.0)
+                    .offset(y: isAnimating ? 0 : 30)
+                    .animation(.easeOut(duration: 0.6).delay(0.5), value: isAnimating)
+                    
+                    // 原著地址
+                    if let url = article.url, !url.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Divider()
+                                .padding(.vertical, 24)
+                            
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("原著地址")
+                                    .font(.system(size: 14, weight: .medium, design: .serif))
+                                    .foregroundColor(AppColors.textSecondary)
+                                
+                                Link(destination: URL(string: url) ?? URL(string: "https://example.com")!) {
+                                    Text(url)
+                                        .font(.system(size: 15, weight: .regular, design: .serif))
                                         .foregroundColor(AppColors.primary)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 6)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                                .fill(AppColors.primary.opacity(0.1))
-                                                .overlay(
-                                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                                        .stroke(AppColors.primary.opacity(0.2), lineWidth: 0.5)
-                                                )
-                                        )
+                                        .multilineTextAlignment(.leading)
+                                        .lineLimit(2)
                                 }
                             }
-                            .padding(.horizontal, 4)
                         }
+                        .padding(.horizontal, 28)
+                        .opacity(isAnimating ? 1.0 : 0.0)
+                        .offset(y: isAnimating ? 0 : 20)
+                        .animation(.easeOut(duration: 0.6).delay(0.6), value: isAnimating)
                     }
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 20)
-                .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(AppColors.cardBackground)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .stroke(AppColors.cardBorder, lineWidth: 0.5)
-                        )
-                )
-                .appShadow(AppShadows.cardLight)
-                .padding(.horizontal, 16)
-
-                // Mode Switch - 增强样式
-                HStack(spacing: 12) {
-                    DetailSegmentButton(title: "对照", index: 0, selectedIndex: $mode)
-                    DetailSegmentButton(title: "英文", index: 1, selectedIndex: $mode)
-                    DetailSegmentButton(title: "中文", index: 2, selectedIndex: $mode)
-                }
-                .padding(.horizontal, 16)
-
-                // Content
-                VStack(alignment: .leading, spacing: 16) {
-                    if mode == 0 {
-                        ParallelTextView(english: article.englishTranscript ?? "", chinese: article.chineseTranscript ?? "", fontScale: fontScale)
-                    } else if mode == 1 {
-                        ArticleTextView(text: article.englishTranscript ?? "", fontScale: fontScale)
-                    } else {
-                        ArticleTextView(text: article.chineseTranscript ?? "", fontScale: fontScale)
-                    }
-                }
-                .padding(.horizontal, 16)
                 .padding(.bottom, 40)
             }
         }
         .background(AppColors.background.ignoresSafeArea())
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.3)) {
+                isAnimating = true
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 HStack(spacing: 16) {
@@ -857,36 +860,27 @@ struct ArticleDetailView: View {
     }
 }
 
-// 单文排版
+// 单文排版 - 无容器包裹，直接显示文本
 struct ArticleTextView: View {
     let text: String
     let fontScale: Double
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 24) {
             ForEach(text.split(separator: "\n").map(String.init), id: \.self) { para in
                 if !para.trimmingCharacters(in: .whitespaces).isEmpty {
                     Text(para)
-                        .font(AppFonts.body(16 * fontScale))
+                        .font(.system(size: 18 * fontScale, weight: .regular, design: .serif))
                         .foregroundColor(AppColors.textPrimary)
                         .multilineTextAlignment(.leading)
-                        .lineSpacing(4)
+                        .lineSpacing(8)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
-        .padding(20)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(AppColors.cardBackground)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(AppColors.cardBorder, lineWidth: 0.5)
-                )
-        )
-        .appShadow(AppShadows.cardLight)
     }
 }
 
-// 对照排版（英文—中文成对）
+// 对照排版 - 一句英文一句中文，无容器包裹
 struct ParallelTextView: View {
     let english: String
     let chinese: String
@@ -896,57 +890,31 @@ struct ParallelTextView: View {
         let zhLines = chinese.components(separatedBy: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
         let count = max(enLines.count, zhLines.count)
         
-        return VStack(alignment: .leading, spacing: 20) {
+        return VStack(alignment: .leading, spacing: 32) {
             ForEach(0..<count, id: \.self) { i in
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 16) {
+                    // 英文句子
                     if i < enLines.count {
                         Text(enLines[i])
-                            .font(AppFonts.body(16 * fontScale))
-                            .fontWeight(.medium)
+                            .font(.system(size: 18 * fontScale, weight: .medium, design: .serif))
                             .foregroundColor(AppColors.textPrimary)
                             .multilineTextAlignment(.leading)
-                            .lineSpacing(4)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .fill(AppColors.gradientSecondary)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                            .stroke(AppColors.primary.opacity(0.1), lineWidth: 0.5)
-                                    )
-                            )
+                            .lineSpacing(8)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
+                    
+                    // 中文句子
                     if i < zhLines.count {
                         Text(zhLines[i])
-                            .font(AppFonts.body(15 * fontScale))
+                            .font(.system(size: 17 * fontScale, weight: .regular, design: .serif))
                             .foregroundColor(AppColors.textSecondary)
                             .multilineTextAlignment(.leading)
-                            .lineSpacing(3)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .fill(AppColors.cardBackgroundSecondary)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                            .stroke(AppColors.cardBorder, lineWidth: 0.5)
-                                    )
-                            )
+                            .lineSpacing(7)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
         }
-        .padding(20)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(AppColors.cardBackground)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(AppColors.cardBorder, lineWidth: 0.5)
-                )
-        )
-        .appShadow(AppShadows.cardLight)
     }
 }
 
