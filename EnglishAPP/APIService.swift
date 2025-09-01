@@ -208,6 +208,39 @@ final class APIService {
             throw APIError.server(response.message)
         }
     }
+    
+    // MARK: - User Info
+    
+    struct UserInfo: Identifiable, Decodable {
+        let id: Int
+        let email: String
+        let username: String
+        let gender: String?
+        let city: String?
+        let createDate: String
+        let updateDate: String?
+        let lastLoginDate: String
+    }
+    
+    struct UserListResponse: Decodable {
+        let total: Int
+        let data: [UserInfo]
+    }
+    
+    func fetchUserInfo(email: String) async throws -> UserInfo? {
+        typealias UserResponse = APIResponse<UserListResponse>
+        let response: UserResponse = try await requestGET(
+            path: "/api/Auth/userList",
+            queryItems: [
+                URLQueryItem(name: "keyword", value: email)
+            ]
+        )
+        if response.success, let data = response.data, !data.data.isEmpty {
+            return data.data.first
+        } else {
+            return nil
+        }
+    }
 }
 
 

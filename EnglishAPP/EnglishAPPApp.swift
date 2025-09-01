@@ -23,7 +23,7 @@ struct EnglishAPPApp: App {
     
     var body: some Scene {
         WindowGroup {
-            AuthView()
+            ContentView()
         }
     }
 }

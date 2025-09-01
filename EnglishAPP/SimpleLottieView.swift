@@ -191,7 +191,8 @@ struct AutoPlayLottieView: View {
     var body: some View {
         AutoPlayLottieWrapperView(
             animationName: animationName,
-            hasPlayed: $hasPlayed
+            hasPlayed: $hasPlayed,
+            triggerAnimation: .constant(false)
         )
         .frame(width: size.width, height: size.height)
         .onAppear {
@@ -200,9 +201,43 @@ struct AutoPlayLottieView: View {
     }
 }
 
+// MARK: - Triggerable Lottie View
+struct TriggerableLottieView: View {
+    let animationName: String
+    let size: CGSize
+    @Binding var trigger: Bool
+    @State private var hasPlayed: Bool = false
+    @State private var hasInitialized: Bool = false
+    
+    var body: some View {
+        AutoPlayLottieWrapperView(
+            animationName: animationName,
+            hasPlayed: $hasPlayed,
+            triggerAnimation: $trigger
+        )
+        .frame(width: size.width, height: size.height)
+        .onAppear {
+            if !hasInitialized {
+                // 第一次出现时播放动画
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    hasPlayed = false
+                    trigger = true
+                    hasInitialized = true
+                }
+            }
+        }
+        .onChange(of: trigger) { newValue in
+            if newValue && hasInitialized {
+                hasPlayed = false
+            }
+        }
+    }
+}
+
 struct AutoPlayLottieWrapperView: UIViewRepresentable {
     let animationName: String
     @Binding var hasPlayed: Bool
+    @Binding var triggerAnimation: Bool
     
     func makeUIView(context: Context) -> UIView {
         let containerView = UIView()
@@ -300,10 +335,19 @@ struct AutoPlayLottieWrapperView: UIViewRepresentable {
     private func updateLottieAnimation(_ view: UIView) {
         #if canImport(Lottie)
         if let lottieView = view as? LottieAnimationView {
-            if !hasPlayed {
+            // 对于AutoPlayLottieView：只在hasPlayed为false时播放动画
+            // 对于TriggerableLottieView：只在triggerAnimation为true且hasPlayed为false时播放动画
+            if (!triggerAnimation && !hasPlayed) || (triggerAnimation && !hasPlayed) {
+                lottieView.currentProgress = 0.0
                 lottieView.play { finished in
                     if finished {
                         hasPlayed = true
+                        // 如果是TriggerableLottieView，动画播放完成后重置trigger
+                        if triggerAnimation {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                triggerAnimation = false
+                            }
+                        }
                     }
                 }
             }

@@ -193,6 +193,23 @@ struct VerificationCodeView: View {
                 case "login":
                     let token = try await APIService.shared.login(email: email, password: password, verificationCode: verificationCode)
                     UserDefaults.standard.set(token, forKey: "userToken")
+                    UserDefaults.standard.set(email, forKey: "userEmail")
+                    UserDefaults.standard.set(true, forKey: "isLoggedIn")
+                    
+                    // 获取用户信息
+                    if let userInfo = try await APIService.shared.fetchUserInfo(email: email) {
+                        let userDict: [String: Any] = [
+                            "id": userInfo.id,
+                            "email": userInfo.email,
+                            "username": userInfo.username,
+                            "gender": userInfo.gender ?? "",
+                            "city": userInfo.city ?? "",
+                            "createDate": userInfo.createDate,
+                            "updateDate": userInfo.updateDate ?? "",
+                            "lastLoginDate": userInfo.lastLoginDate
+                        ]
+                        UserDefaults.standard.set(userDict, forKey: "userInfo")
+                    }
                     
                 case "register":
                     _ = try await APIService.shared.register(username: username, email: email, password: password, verificationCode: verificationCode)

@@ -10,8 +10,7 @@ extension Array {
 }
 
 struct MainAppView: View {
-    @State private var selectedTab: Int = 0
-    @State private var showProfile: Bool = false
+    @State private var selectedTab: Int = 0 // 0: 首页 1: 我的
     @State private var showLogoutAlert: Bool = false
     @State private var selectedSegment: Int = 0 // 0: 文章 1: 场景 2: 单词
     @State private var showSearch: Bool = false
@@ -25,7 +24,8 @@ struct MainAppView: View {
                 AppColors.background.ignoresSafeArea()
                 
                 VStack(spacing: 0) {
-                    // Top Navigation - 四等分布局
+                                    // Top Navigation - 只在首页显示
+                if selectedTab == 0 {
                     HStack(spacing: 0) {
                         TopTabButton(title: "文章", index: 0, selectedIndex: $selectedSegment)
                             .frame(maxWidth: .infinity)
@@ -53,21 +53,30 @@ struct MainAppView: View {
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 20)
+                }
 
                     // Main Content
                     Group {
-                        if selectedSegment == 0 {
-                            ArticleGridView(vm: articlesVM)
-                        } else if selectedSegment == 1 {
-                            PlaceholderView(title: "场景", subtitle: "即将上线 · 敬请期待")
+                        if selectedTab == 0 {
+                            // 首页内容
+                            Group {
+                                if selectedSegment == 0 {
+                                    ArticleGridView(vm: articlesVM)
+                                } else if selectedSegment == 1 {
+                                    PlaceholderView(title: "场景", subtitle: "即将上线 · 敬请期待")
+                                } else {
+                                    PlaceholderView(title: "单词", subtitle: "即将上线 · 敬请期待")
+                                }
+                            }
+                            .onAppear {
+                                if articlesVM.items.isEmpty { articlesVM.reload(keyword: "") }
+                            }
+                            .padding(.top, 12)
                         } else {
-                            PlaceholderView(title: "单词", subtitle: "即将上线 · 敬请期待")
+                            // 我的页面
+                            ProfileView()
                         }
                     }
-                    .onAppear {
-                        if articlesVM.items.isEmpty { articlesVM.reload(keyword: "") }
-                    }
-                    .padding(.top, 12)
                     
                     Spacer(minLength: 0)
                 }
@@ -76,18 +85,14 @@ struct MainAppView: View {
                 VStack {
                     Spacer()
                     BottomBar(
-                        onHome: { withAnimation { selectedSegment = 0 } },
+                        onHome: { withAnimation { selectedTab = 0 } },
                         onCenter: { },
-                        onProfile: { showProfile = true }
+                        onProfile: { withAnimation { selectedTab = 1 } },
+                        selectedTab: $selectedTab
                     )
                 }
                 .ignoresSafeArea(.container, edges: .bottom)
             }
-        }
-        .sheet(isPresented: $showProfile) {
-            ProfileView(onLogout: {
-                showLogoutAlert = true
-            })
         }
         .sheet(isPresented: $showSearch) {
             SearchSheet(text: $searchText, onSubmit: { keyword in
@@ -204,17 +209,41 @@ struct BottomBar: View {
     let onHome: () -> Void
     let onCenter: () -> Void
     let onProfile: () -> Void
+    @Binding var selectedTab: Int
+    @State private var homeAnimationTrigger: Bool = false
+    @State private var profileAnimationTrigger: Bool = false
+    @State private var homeHasPlayed: Bool = false
+    @State private var profileHasPlayed: Bool = false
+
     
     var body: some View {
         HStack(alignment: .center) {
-            Button(action: onHome) {
-                VStack(spacing: 2) {
-                    AutoPlayLottieView(animationName: "Home", size: CGSize(width: 50, height: 50))
+            Button(action: {
+                homeAnimationTrigger.toggle()
+                onHome()
+            }) {
+                VStack(spacing: 0) {
+                    ZStack {
+                        // 固定尺寸的容器框
+                        Rectangle()
+                            .fill(Color.clear)
+                            .frame(width: 50, height: 50)
+                        
+                        // Lottie动画居中显示
+                        TriggerableLottieView(animationName: "Home", size: CGSize(width: 50, height: 50), trigger: $homeAnimationTrigger)
+                            .onChange(of: homeAnimationTrigger) { _ in
+                                homeHasPlayed = true
+                                // 动画播放完成后重置trigger
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                    homeAnimationTrigger = false
+                                }
+                            }
+                    }
                     Text("首页")
                         .font(AppFonts.cardCaption(11))
                         .fontWeight(.medium)
                 }
-                .foregroundColor(AppColors.primary)
+                .foregroundColor(selectedTab == 0 ? AppColors.primary : AppColors.textSecondary)
             }
             .frame(maxWidth: .infinity)
             
@@ -227,15 +256,32 @@ struct BottomBar: View {
             .frame(maxWidth: .infinity)
             .disabled(true)
             
-            Button(action: onProfile) {
-                VStack(spacing: 6) {
-                    Image(systemName: "person.crop.circle.fill")
-                        .font(.system(size: 22))
+            Button(action: {
+                profileAnimationTrigger.toggle()
+                onProfile()
+            }) {
+                VStack(spacing: 0) {
+                    ZStack {
+                        // 固定尺寸的容器框
+                        Rectangle()
+                            .fill(Color.clear)
+                            .frame(width: 50, height: 50)
+                        
+                        // Lottie动画居中显示
+                        TriggerableLottieView(animationName: "Profile Icon", size: CGSize(width: 30, height: 30), trigger: $profileAnimationTrigger)
+                            .onChange(of: profileAnimationTrigger) { _ in
+                                profileHasPlayed = true
+                                // 动画播放完成后重置trigger
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                    profileAnimationTrigger = false
+                                }
+                            }
+                    }
                     Text("我的")
                         .font(AppFonts.cardCaption(11))
                         .fontWeight(.medium)
                 }
-                .foregroundColor(AppColors.textSecondary)
+                .foregroundColor(selectedTab == 1 ? AppColors.primary : AppColors.textSecondary)
             }
             .frame(maxWidth: .infinity)
         }
@@ -243,6 +289,7 @@ struct BottomBar: View {
         .padding(.top, 12)
         .padding(.bottom, 24)
         .frame(maxWidth: .infinity, minHeight: 72)
+
         .background(
             RoundedRectangle(cornerRadius: 0)
                 .fill(.ultraThinMaterial)
@@ -1103,53 +1150,179 @@ struct ArticleCard: View {
 }
 
 struct ProfileView: View {
-    @Environment(\.dismiss) private var dismiss
-    let onLogout: () -> Void
+    @State private var userInfo: APIService.UserInfo?
+    @State private var isLoading: Bool = true
+    @State private var showLogoutAlert: Bool = false
     
     var body: some View {
-        NavigationView {
-            VStack(spacing: 24) {
-                // Profile Header
-                VStack(spacing: 16) {
-                    Image(systemName: "person.circle.fill")
-                        .font(.system(size: 80))
-                        .foregroundColor(AppColors.primary)
-                    
-                    VStack(spacing: 4) {
-                        Text("用户名")
-                            .font(AppFonts.title(20))
-                            .fontWeight(.semibold)
-                            .foregroundColor(AppColors.textPrimary)
+        VStack(spacing: 24) {
+                if isLoading {
+                    ProgressView()
+                        .scaleEffect(1.2)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    // Profile Header
+                    VStack(spacing: 16) {
+                        Image(systemName: "person.circle.fill")
+                            .font(.system(size: 80))
+                            .foregroundColor(AppColors.primary)
                         
-                        Text("user@example.com")
-                            .font(AppFonts.body(14))
-                            .foregroundColor(AppColors.textSecondary)
+                        VStack(spacing: 4) {
+                            Text(userInfo?.username ?? "用户名")
+                                .font(AppFonts.title(20))
+                                .fontWeight(.semibold)
+                                .foregroundColor(AppColors.textPrimary)
+                            
+                            Text(userInfo?.email ?? "user@example.com")
+                                .font(AppFonts.body(14))
+                                .foregroundColor(AppColors.textSecondary)
+                        }
                     }
+                    .padding(.top, 40)
+                    
+                    // User Info Card
+                    if let user = userInfo {
+                        VStack(spacing: 16) {
+                            InfoRow(title: "用户ID", value: "\(user.id)")
+                            InfoRow(title: "注册时间", value: formatDate(user.createDate))
+                            InfoRow(title: "最后登录", value: formatDate(user.lastLoginDate))
+                            if let city = user.city, !city.isEmpty {
+                                InfoRow(title: "城市", value: city)
+                            }
+                            if let gender = user.gender, !gender.isEmpty {
+                                InfoRow(title: "性别", value: gender)
+                            }
+                        }
+                        .padding(20)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(Color.white)
+                                .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 4)
+                        )
+                        .padding(.horizontal, 20)
+                    }
+                    
+                    // Settings
+                    VStack(spacing: 0) {
+                        SettingsRow(icon: "gear", title: "设置", action: {})
+                        SettingsRow(icon: "bell", title: "通知", action: {})
+                        SettingsRow(icon: "questionmark.circle", title: "帮助", action: {})
+                        SettingsRow(icon: "arrow.right.square", title: "退出登录", action: {
+                            showLogoutAlert = true
+                        })
+                    }
+                    .background(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(Color.white)
+                            .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 4)
+                    )
+                    .padding(.horizontal, 20)
+                    
+                    Spacer()
                 }
-                .padding(.top, 40)
-                
-                // Settings
-                VStack(spacing: 0) {
-                    SettingsRow(icon: "gear", title: "设置", action: {})
-                    SettingsRow(icon: "bell", title: "通知", action: {})
-                    SettingsRow(icon: "questionmark.circle", title: "帮助", action: {})
-                    SettingsRow(icon: "arrow.right.square", title: "退出登录", action: {
-                        onLogout()
-                        dismiss()
-                    })
-                }
-                .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(Color.white)
-                        .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 4)
-                )
-                .padding(.horizontal, 20)
-                
-                Spacer()
             }
             .background(AppColors.background.ignoresSafeArea())
-            .navigationBarHidden(true)
+            .onAppear {
+                loadUserInfo()
+            }
+            .alert("退出登录", isPresented: $showLogoutAlert) {
+                Button("取消", role: .cancel) { }
+                Button("退出", role: .destructive) {
+                    logout()
+                }
+            } message: {
+                Text("确定要退出登录吗？")
+            }
+    }
+    
+    private func loadUserInfo() {
+        // 首先尝试从UserDefaults读取已保存的用户信息
+        if let userDict = UserDefaults.standard.dictionary(forKey: "userInfo"),
+           let id = userDict["id"] as? Int,
+           let email = userDict["email"] as? String,
+           let username = userDict["username"] as? String,
+           let createDate = userDict["createDate"] as? String,
+           let lastLoginDate = userDict["lastLoginDate"] as? String {
+            
+            let user = APIService.UserInfo(
+                id: id,
+                email: email,
+                username: username,
+                gender: userDict["gender"] as? String,
+                city: userDict["city"] as? String,
+                createDate: createDate,
+                updateDate: userDict["updateDate"] as? String,
+                lastLoginDate: lastLoginDate
+            )
+            
+            self.userInfo = user
+            self.isLoading = false
+        } else {
+            // 如果没有保存的信息，则从API获取
+            Task {
+                do {
+                    if let email = UserDefaults.standard.string(forKey: "userEmail") {
+                        let user = try await APIService.shared.fetchUserInfo(email: email)
+                        await MainActor.run {
+                            self.userInfo = user
+                            self.isLoading = false
+                            
+                            // 保存用户信息到UserDefaults
+                            if let user = user {
+                                saveUserInfo(user)
+                            }
+                        }
+                    } else {
+                        await MainActor.run {
+                            self.isLoading = false
+                        }
+                    }
+                } catch {
+                    print("Failed to load user info: \(error)")
+                    await MainActor.run {
+                        self.isLoading = false
+                    }
+                }
+            }
         }
+    }
+    
+    private func saveUserInfo(_ user: APIService.UserInfo) {
+        let userDict: [String: Any] = [
+            "id": user.id,
+            "email": user.email,
+            "username": user.username,
+            "gender": user.gender ?? "",
+            "city": user.city ?? "",
+            "createDate": user.createDate,
+            "updateDate": user.updateDate ?? "",
+            "lastLoginDate": user.lastLoginDate
+        ]
+        UserDefaults.standard.set(userDict, forKey: "userInfo")
+    }
+    
+    private func formatDate(_ dateString: String) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        
+        if let date = formatter.date(from: dateString) {
+            let displayFormatter = DateFormatter()
+            displayFormatter.dateFormat = "yyyy年MM月dd日 HH:mm"
+            return displayFormatter.string(from: date)
+        }
+        
+        return dateString
+    }
+    
+    private func logout() {
+        // 清除用户token和登录状态
+        UserDefaults.standard.removeObject(forKey: "userToken")
+        UserDefaults.standard.removeObject(forKey: "userEmail")
+        UserDefaults.standard.removeObject(forKey: "userInfo")
+        UserDefaults.standard.set(false, forKey: "isLoggedIn")
+        
+        // 返回到登录页面 - 通过重新启动应用来实现
+        exit(0)
     }
 }
 
@@ -1180,6 +1353,26 @@ struct SettingsRow: View {
             .padding(.vertical, 16)
         }
         .buttonStyle(PlainButtonStyle())
+    }
+}
+
+struct InfoRow: View {
+    let title: String
+    let value: String
+    
+    var body: some View {
+        HStack(spacing: 16) {
+            Text(title)
+                .font(AppFonts.body(14))
+                .foregroundColor(AppColors.textSecondary)
+                .frame(width: 80, alignment: .leading)
+            
+            Text(value)
+                .font(AppFonts.body(14))
+                .foregroundColor(AppColors.textPrimary)
+            
+            Spacer()
+        }
     }
 }
 
