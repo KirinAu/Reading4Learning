@@ -134,7 +134,7 @@ struct TopTabButton: View {
                         .offset(x: 8) // 向右移动，靠近文字
                 case "单词":
                     AutoPlayLottieView(animationName: "Document Icon Lottie Animation", size: CGSize(width: 50, height: 50))
-                        .offset(x: 12) // 向右移动，靠近文字
+                        .offset(x: 10) // 向右移动，靠近文字
                 default:
                     EmptyView()
                 }
