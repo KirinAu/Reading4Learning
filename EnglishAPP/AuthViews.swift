@@ -59,10 +59,11 @@ struct AuthView: View {
                     VStack(spacing: 14) {
                         // Name field with animation
                         if !isLogin {
-                            TextField("昵称", text: $name)
+                            TextField("", text: $name, prompt: Text("昵称").foregroundColor(AppColors.textSecondary))
                                 .textInputAutocapitalization(.none)
                                 .disableAutocorrection(true)
                                 .modifier(TextFieldStyleConfig.inputField(icon: "person"))
+                                .foregroundColor(AppColors.textPrimary)
                                 .opacity(nameFieldOpacity)
                                 .frame(height: nameFieldHeight)
                                 .transition(.asymmetric(
@@ -71,7 +72,7 @@ struct AuthView: View {
                                 ))
                         }
                         
-                        TextField("邮箱", text: $email)
+                        TextField("", text: $email, prompt: Text("邮箱").foregroundColor(AppColors.textSecondary))
                             .onChange(of: autoFillEmail) { newValue in
                                 if !newValue.isEmpty {
                                     email = newValue
@@ -82,12 +83,13 @@ struct AuthView: View {
                             .keyboardType(.emailAddress)
                             .disableAutocorrection(true)
                             .modifier(TextFieldStyleConfig.inputField(icon: "envelope"))
+                            .foregroundColor(AppColors.textPrimary)
                             .transition(.asymmetric(
                                 insertion: .move(edge: .leading).combined(with: .opacity),
                                 removal: .move(edge: .leading).combined(with: .opacity)
                             ))
                         
-                        SecureField("密码", text: $password)
+                        SecureField("", text: $password, prompt: Text("密码").foregroundColor(AppColors.textSecondary))
                             .onChange(of: autoFillPassword) { newValue in
                                 if !newValue.isEmpty {
                                     password = newValue
@@ -95,6 +97,7 @@ struct AuthView: View {
                                 }
                             }
                             .modifier(TextFieldStyleConfig.inputField(icon: "lock"))
+                            .foregroundColor(AppColors.textPrimary)
                             .transition(.asymmetric(
                                 insertion: .move(edge: .trailing).combined(with: .opacity),
                                 removal: .move(edge: .trailing).combined(with: .opacity)
@@ -130,32 +133,7 @@ struct AuthView: View {
                 .padding(.bottom, 120)
             }
 
-            // Milky bottom
-            VStack {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(AppColors.milkyBottom)
-                    .frame(height: 86)
-                    .overlay(
-                        HStack(spacing: 12) {
-                            Circle().fill(AppColors.primary.opacity(0.12)).frame(width: 42, height: 42)
-                                .overlay(Image(systemName: "book.fill").foregroundColor(AppColors.primary))
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("开始你的英语学习之旅")
-                                    .font(AppFonts.body(15, weight: .semibold))
-                                    .foregroundColor(AppColors.textPrimary)
-                                Text("文章阅读 · 单词学习 · 场景训练")
-                                    .font(AppFonts.caption())
-                                    .foregroundColor(AppColors.textSecondary)
-                            }
-                            Spacer()
-                        }
-                        .padding(.horizontal, 16)
-                    )
-                    .overlay(
-                        Rectangle().fill(AppColors.border).frame(height: 1).frame(maxHeight: .infinity, alignment: .top)
-                    )
-            }
-            .ignoresSafeArea(edges: .bottom)
+            // Removed bottom promo banner per request
         }
         .fullScreenCover(isPresented: $showMainApp) {
             MainAppView()

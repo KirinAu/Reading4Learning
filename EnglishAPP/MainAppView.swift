@@ -709,6 +709,7 @@ struct ArticleDetailView: View {
     @State private var mode: Int = 1 // 0: 对照 1: 英文 2: 中文 - 默认显示英文
     @State private var fontScale: Double = 1.0
     @State private var isAnimating: Bool = false
+    @State private var showReaderToolbar: Bool = false
     
     var body: some View {
         ScrollView {
@@ -824,26 +825,19 @@ struct ArticleDetailView: View {
                     }
                     .padding(.horizontal, 28)
 
-                    // Mode Switch - iOS风格的分段控制器
-                    HStack(spacing: 0) {
-                        DetailSegmentButton(title: "对照", index: 0, selectedIndex: $mode)
-                        DetailSegmentButton(title: "英文", index: 1, selectedIndex: $mode)
-                        DetailSegmentButton(title: "中文", index: 2, selectedIndex: $mode)
-                    }
-                    .padding(.horizontal, 28)
-                    .padding(.vertical, 8)
-                    .opacity(isAnimating ? 1.0 : 0.0)
-                    .offset(y: isAnimating ? 0 : 20)
-                    .animation(.easeOut(duration: 0.6).delay(0.4), value: isAnimating)
+                    // 移除中部的模式切换按钮，改为右上角入口
 
                     // Content - 无容器包裹，直接显示文本
                     VStack(alignment: .leading, spacing: 0) {
                         if mode == 0 {
+                            // 对照模式：使用 englishTranscript 和 chineseTranscript
                             ParallelTextView(english: article.englishTranscript ?? "", chinese: article.chineseTranscript ?? "", fontScale: fontScale)
                         } else if mode == 1 {
-                            ArticleTextView(text: article.englishTranscript ?? "", fontScale: fontScale)
+                            // 英文模式：使用 english 字段
+                            ArticleTextView(text: article.english ?? "", fontScale: fontScale)
                         } else {
-                            ArticleTextView(text: article.chineseTranscript ?? "", fontScale: fontScale)
+                            // 中文模式：使用 chinese 字段
+                            ArticleTextView(text: article.chinese ?? "", fontScale: fontScale)
                         }
                     }
                     .padding(.horizontal, 28)
@@ -883,6 +877,8 @@ struct ArticleDetailView: View {
         .background(AppColors.background.ignoresSafeArea())
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(AppColors.background, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .onAppear {
             withAnimation(.easeOut(duration: 0.3)) {
                 isAnimating = true
@@ -890,19 +886,29 @@ struct ArticleDetailView: View {
         }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                HStack(spacing: 16) {
-                    Button(action: { withAnimation(.easeInOut(duration: 0.2)) { fontScale = max(0.8, fontScale - 0.1) } }) {
-                        Image(systemName: "textformat.size.smaller")
-                            .font(.system(size: 16))
-                            .foregroundColor(AppColors.primary)
-                    }
-                    Button(action: { withAnimation(.easeInOut(duration: 0.2)) { fontScale = min(1.6, fontScale + 0.1) } }) {
-                        Image(systemName: "textformat.size.larger")
-                            .font(.system(size: 16))
-                            .foregroundColor(AppColors.primary)
-                    }
+                Button(action: { withAnimation { showReaderToolbar = true } }) {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(AppColors.primary)
                 }
             }
+        }
+        .sheet(isPresented: $showReaderToolbar) {
+            VStack(spacing: 16) {
+                HStack {
+                    Text("阅读设置")
+                        .font(AppFonts.body(16, weight: .semibold))
+                        .foregroundColor(AppColors.textPrimary)
+                    Spacer()
+                    Button(action: { showReaderToolbar = false }) {
+                        Image(systemName: "xmark.circle.fill").font(.system(size: 20)).foregroundColor(AppColors.textSecondary)
+                    }
+                }
+                ReadingToolbar(mode: $mode, fontScale: $fontScale)
+            }
+            .padding(16)
+            .background(AppColors.background)
+            .presentationDetents([.height(180), .medium])
         }
     }
 }
@@ -912,10 +918,10 @@ struct ArticleTextView: View {
     let text: String
     let fontScale: Double
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: 24) { // 恢复原来的间距
             ForEach(text.split(separator: "\n").map(String.init), id: \.self) { para in
                 if !para.trimmingCharacters(in: .whitespaces).isEmpty {
-                    Text(para)
+                    Text("　　" + para) // 两个全角空格作为首行缩进
                         .font(.system(size: 18 * fontScale, weight: .regular, design: .serif))
                         .foregroundColor(AppColors.textPrimary)
                         .multilineTextAlignment(.leading)

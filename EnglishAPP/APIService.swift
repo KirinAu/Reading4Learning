@@ -185,6 +185,8 @@ final class APIService {
         let language: String?
         let englishTranscript: String?
         let chineseTranscript: String?
+        let english: String?
+        let chinese: String?
         let topics: [String]?
         let createDate: String?
         let updateDate: String?
