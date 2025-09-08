@@ -710,6 +710,7 @@ struct ArticleDetailView: View {
     @State private var fontScale: Double = 1.0
     @State private var isAnimating: Bool = false
     @State private var showReaderToolbar: Bool = false
+    @StateObject private var annotationManager = AnnotationManager()
     
     var body: some View {
         ScrollView {
@@ -834,10 +835,24 @@ struct ArticleDetailView: View {
                             ParallelTextView(english: article.englishTranscript ?? "", chinese: article.chineseTranscript ?? "", fontScale: fontScale)
                         } else if mode == 1 {
                             // 英文模式：使用 english 字段
-                            ArticleTextView(text: article.english ?? "", fontScale: fontScale)
+                            UnifiedSelectableTextView(
+                                text: article.english ?? "",
+                                fontScale: fontScale,
+                                articleId: String(article.id),
+                                articleTitle: article.title,
+                                articleImageUrl: article.imgUrl,
+                                annotationManager: annotationManager
+                            )
                         } else {
                             // 中文模式：使用 chinese 字段
-                            ArticleTextView(text: article.chinese ?? "", fontScale: fontScale)
+                            UnifiedSelectableTextView(
+                                text: article.chinese ?? "",
+                                fontScale: fontScale,
+                                articleId: String(article.id),
+                                articleTitle: article.title,
+                                articleImageUrl: article.imgUrl,
+                                annotationManager: annotationManager
+                            )
                         }
                     }
                     .padding(.horizontal, 28)
@@ -883,6 +898,7 @@ struct ArticleDetailView: View {
             withAnimation(.easeOut(duration: 0.3)) {
                 isAnimating = true
             }
+            annotationManager.loadAnnotations()
         }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -921,7 +937,7 @@ struct ArticleTextView: View {
         VStack(alignment: .leading, spacing: 24) { // 恢复原来的间距
             ForEach(text.split(separator: "\n").map(String.init), id: \.self) { para in
                 if !para.trimmingCharacters(in: .whitespaces).isEmpty {
-                    Text("　　" + para) // 两个全角空格作为首行缩进
+                    Text("    " + para) // 四个半角空格作为首行缩进
                         .font(.system(size: 18 * fontScale, weight: .regular, design: .serif))
                         .foregroundColor(AppColors.textPrimary)
                         .multilineTextAlignment(.leading)
@@ -930,6 +946,81 @@ struct ArticleTextView: View {
                 }
             }
         }
+    }
+}
+
+// 支持下划线的文章文本视图
+struct UnderlinedArticleTextView: View {
+    let text: String
+    let fontScale: Double
+    let articleId: String
+    let annotationManager: AnnotationManager
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            ForEach(text.split(separator: "\n").map(String.init), id: \.self) { para in
+                if !para.trimmingCharacters(in: .whitespaces).isEmpty {
+                    UnderlinedParagraphView(
+                        paragraph: "    " + para,
+                        fontScale: fontScale,
+                        articleId: articleId,
+                        annotationManager: annotationManager
+                    )
+                }
+            }
+        }
+    }
+}
+
+struct UnderlinedParagraphView: View {
+    let paragraph: String
+    let fontScale: Double
+    let articleId: String
+    let annotationManager: AnnotationManager
+
+    var body: some View {
+        let highlights = annotationManager.annotations.first(where: { $0.articleId == articleId })?.highlightedRanges ?? []
+
+        if highlights.isEmpty {
+            // 没有下划线，直接显示普通文本
+            Text(paragraph)
+                .font(.system(size: 18 * fontScale, weight: .regular, design: .serif))
+                .foregroundColor(AppColors.textPrimary)
+                .multilineTextAlignment(.leading)
+                .lineSpacing(8)
+                .fixedSize(horizontal: false, vertical: true)
+        } else {
+            // 有下划线，逐字符处理
+            let attributedString = createAttributedString()
+            Text(attributedString)
+                .font(.system(size: 18 * fontScale, weight: .regular, design: .serif))
+                .foregroundColor(AppColors.textPrimary)
+                .multilineTextAlignment(.leading)
+                .lineSpacing(8)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func createAttributedString() -> AttributedString {
+        var attributedString = AttributedString(paragraph)
+        let highlights = annotationManager.annotations.first(where: { $0.articleId == articleId })?.highlightedRanges ?? []
+
+        for highlight in highlights {
+            // 由于段落前面有4个空格，需要调整位置
+            let adjustedStart = highlight.startIndex + 4
+            let adjustedEnd = highlight.endIndex + 4
+
+            if adjustedStart >= 0 && adjustedEnd <= paragraph.count && adjustedStart < adjustedEnd {
+                if let range = Range(NSRange(location: adjustedStart, length: adjustedEnd - adjustedStart), in: paragraph) {
+                    if let attributedRange = Range(range, in: attributedString) {
+                        attributedString[attributedRange].underlineStyle = .single
+                        attributedString[attributedRange].foregroundColor = .blue
+                    }
+                }
+            }
+        }
+
+        return attributedString
     }
 }
 
@@ -1210,6 +1301,10 @@ struct ProfileView: View {
                     
                     // Settings
                     VStack(spacing: 0) {
+                        NavigationLink(destination: MyAnnotationsView()) {
+                            SettingsRowContent(icon: "highlighter", title: "我的批注")
+                        }
+                        .buttonStyle(PlainButtonStyle())
                         SettingsRow(icon: "gear", title: "设置", action: {})
                         SettingsRow(icon: "bell", title: "通知", action: {})
                         SettingsRow(icon: "questionmark.circle", title: "帮助", action: {})
@@ -1339,26 +1434,35 @@ struct SettingsRow: View {
     
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 16) {
-                Image(systemName: icon)
-                    .font(.system(size: 20))
-                    .foregroundColor(AppColors.textSecondary)
-                    .frame(width: 24)
-                
-                Text(title)
-                    .font(AppFonts.body(16))
-                    .foregroundColor(AppColors.textPrimary)
-                
-                Spacer()
-                
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 16))
-                    .foregroundColor(AppColors.textSecondary)
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
+            SettingsRowContent(icon: icon, title: title)
         }
         .buttonStyle(PlainButtonStyle())
+    }
+}
+
+struct SettingsRowContent: View {
+    let icon: String
+    let title: String
+    
+    var body: some View {
+        HStack(spacing: 16) {
+            Image(systemName: icon)
+                .font(.system(size: 20))
+                .foregroundColor(AppColors.textSecondary)
+                .frame(width: 24)
+            
+            Text(title)
+                .font(AppFonts.body(16))
+                .foregroundColor(AppColors.textPrimary)
+            
+            Spacer()
+            
+            Image(systemName: "chevron.right")
+                .font(.system(size: 16))
+                .foregroundColor(AppColors.textSecondary)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
     }
 }
 
@@ -1379,6 +1483,711 @@ struct InfoRow: View {
             
             Spacer()
         }
+    }
+}
+
+// MARK: - My Annotations View
+
+struct MyAnnotationsView: View {
+    @StateObject private var annotationManager = AnnotationManager()
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                Text("我的批注")
+                    .font(AppFonts.title(24))
+                    .fontWeight(.bold)
+                    .foregroundColor(AppColors.textPrimary)
+
+                Spacer()
+
+                Text("\(annotationManager.annotations.count) 篇")
+                    .font(AppFonts.body(14))
+                    .foregroundColor(AppColors.textSecondary)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 20)
+            .padding(.bottom, 16)
+
+            // Content
+            if annotationManager.annotations.isEmpty {
+                VStack(spacing: 20) {
+                    Image(systemName: "highlighter")
+                        .font(.system(size: 60))
+                        .foregroundColor(AppColors.textTertiary)
+
+                    VStack(spacing: 8) {
+                        Text("还没有批注")
+                            .font(AppFonts.body(18, weight: .medium))
+                            .foregroundColor(AppColors.textPrimary)
+
+                        Text("在阅读文章时选中文字进行下划线，批注会显示在这里")
+                            .font(AppFonts.body(14))
+                            .foregroundColor(AppColors.textSecondary)
+                            .multilineTextAlignment(.center)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.horizontal, 40)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 16) {
+                        ForEach(annotationManager.annotations) { annotation in
+                            AnnotationCard(annotation: annotation)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 100)
+                }
+            }
+        }
+        .background(AppColors.background.ignoresSafeArea())
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            annotationManager.loadAnnotations()
+        }
+    }
+}
+
+// MARK: - Annotation Models
+
+struct ArticleAnnotation: Identifiable, Codable {
+    let id = UUID()
+    let articleId: String
+    let articleTitle: String
+    let articleImageUrl: String?
+    let highlightedRanges: [HighlightRange]
+    let lastUpdated: Date
+
+    init(articleId: String, articleTitle: String, articleImageUrl: String?, highlightedRanges: [HighlightRange]) {
+        self.articleId = articleId
+        self.articleTitle = articleTitle
+        self.articleImageUrl = articleImageUrl
+        self.highlightedRanges = highlightedRanges
+        self.lastUpdated = Date()
+    }
+}
+
+struct HighlightRange: Codable {
+    let startIndex: Int
+    let endIndex: Int
+    let paragraphIndex: Int
+    let timestamp: Date
+
+    init(startIndex: Int, endIndex: Int, paragraphIndex: Int) {
+        self.startIndex = startIndex
+        self.endIndex = endIndex
+        self.paragraphIndex = paragraphIndex
+        self.timestamp = Date()
+    }
+}
+
+// 旧数据结构，用于数据迁移
+struct OldArticleAnnotation: Codable {
+    let id: UUID
+    let articleId: String
+    let articleTitle: String
+    let articleImageUrl: String?
+    let highlightedWords: [OldHighlightedWord]
+    let lastUpdated: Date
+}
+
+struct OldHighlightedWord: Codable {
+    let id: UUID
+    let word: String
+    let range: OldWordRange
+    let timestamp: Date
+    let highlightType: OldHighlightType
+    let note: String?
+}
+
+struct OldWordRange: Codable {
+    let startIndex: Int
+    let endIndex: Int
+    let paragraphIndex: Int
+}
+
+enum OldHighlightType: String, Codable {
+    case unknown = "unknown"
+    case important = "important"
+    case review = "review"
+    case favorite = "favorite"
+}
+
+// MARK: - Annotation Manager
+
+class AnnotationManager: ObservableObject {
+    @Published var annotations: [ArticleAnnotation] = []
+
+    private let userDefaults = UserDefaults.standard
+    private let annotationsKey = "articleAnnotations"
+
+    func loadAnnotations() {
+        guard let data = userDefaults.data(forKey: annotationsKey) else {
+            print("No annotation data found")
+            return
+        }
+
+        print("Loading annotation data...")
+
+        do {
+            // 尝试解码新格式
+            annotations = try JSONDecoder().decode([ArticleAnnotation].self, from: data)
+            print("Successfully loaded \(annotations.count) annotations")
+        } catch {
+            print("加载批注数据失败: \(error)")
+
+            // 如果解码失败，尝试迁移旧数据
+            migrateOldData(data)
+        }
+    }
+
+    private func migrateOldData(_ data: Data) {
+        do {
+            print("Attempting to migrate old annotation data...")
+            // 尝试解码旧格式的数据
+            let oldAnnotations = try JSONDecoder().decode([OldArticleAnnotation].self, from: data)
+            print("Found \(oldAnnotations.count) old annotations to migrate")
+
+            // 转换为新格式
+            annotations = oldAnnotations.map { oldAnnotation in
+                let newRanges = oldAnnotation.highlightedWords.map { oldWord in
+                    HighlightRange(
+                        startIndex: oldWord.range.startIndex,
+                        endIndex: oldWord.range.endIndex,
+                        paragraphIndex: oldWord.range.paragraphIndex
+                    )
+                }
+
+                return ArticleAnnotation(
+                    articleId: oldAnnotation.articleId,
+                    articleTitle: oldAnnotation.articleTitle,
+                    articleImageUrl: oldAnnotation.articleImageUrl,
+                    highlightedRanges: newRanges
+                )
+            }
+
+            // 保存转换后的数据
+            saveAnnotations()
+            print("成功迁移旧批注数据，共迁移 \(annotations.count) 条批注")
+        } catch {
+            print("迁移旧数据失败: \(error)")
+        }
+    }
+
+    private func saveAnnotations() {
+        do {
+            let data = try JSONEncoder().encode(annotations)
+            userDefaults.set(data, forKey: annotationsKey)
+        } catch {
+            print("保存批注数据失败: \(error)")
+        }
+    }
+
+    func addAnnotation(_ annotation: ArticleAnnotation) {
+        if let index = annotations.firstIndex(where: { $0.articleId == annotation.articleId }) {
+            annotations[index] = annotation
+        } else {
+            annotations.append(annotation)
+        }
+        saveAnnotations()
+    }
+
+    func removeAnnotation(articleId: String) {
+        annotations.removeAll { $0.articleId == articleId }
+        saveAnnotations()
+    }
+
+    func addHighlight(articleId: String, articleTitle: String, articleImageUrl: String?, range: HighlightRange) {
+        var highlightedRanges = annotations.first(where: { $0.articleId == articleId })?.highlightedRanges ?? []
+        highlightedRanges.append(range)
+
+        let annotation = ArticleAnnotation(
+            articleId: articleId,
+            articleTitle: articleTitle,
+            articleImageUrl: articleImageUrl,
+            highlightedRanges: highlightedRanges
+        )
+        addAnnotation(annotation)
+    }
+
+    func hasHighlights(for articleId: String) -> Bool {
+        return annotations.contains { $0.articleId == articleId }
+    }
+}
+
+// MARK: - Selectable Article Text Component
+
+struct SelectableArticleTextView: View {
+    let text: String
+    let fontScale: Double
+    let articleId: String
+    let articleTitle: String
+    let articleImageUrl: String?
+    let annotationManager: AnnotationManager
+
+    var body: some View {
+        ZStack {
+            // 基础文本显示（支持下划线）
+            UnderlinedArticleTextView(
+                text: text,
+                fontScale: fontScale,
+                articleId: articleId,
+                annotationManager: annotationManager
+            )
+
+            // 透明的选中层
+            SelectableOverlay(
+                text: text,
+                fontScale: fontScale,
+                articleId: articleId,
+                articleTitle: articleTitle,
+                articleImageUrl: articleImageUrl,
+                annotationManager: annotationManager
+            )
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("HighlightUpdated"))) { _ in
+            // 当下划线更新时，强制重新渲染
+        }
+    }
+}
+
+// MARK: - Unified UITextView 渲染（显示+选择+下划线）
+
+struct UnifiedSelectableTextView: UIViewRepresentable {
+    let text: String
+    let fontScale: Double
+    let articleId: String
+    let articleTitle: String
+    let articleImageUrl: String?
+    let annotationManager: AnnotationManager
+
+    func makeUIView(context: Context) -> UITextView {
+        let textView = UnifiedTextView()
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.backgroundColor = .clear
+        // 右侧增加少量内边距，缓和右缘
+        textView.textContainerInset = UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 5)
+        textView.textContainer.lineFragmentPadding = 0
+        textView.setContentHuggingPriority(.required, for: .vertical)
+        textView.setContentCompressionResistancePriority(.required, for: .vertical)
+        textView.delegate = context.coordinator
+
+        // 注入上下文
+        textView.articleId = articleId
+        textView.articleTitle = articleTitle
+        textView.articleImageUrl = articleImageUrl
+        textView.annotationManager = annotationManager
+        textView.coordinator = context.coordinator
+
+        // 首次渲染
+        context.coordinator.render(text: text, on: textView, fontScale: fontScale)
+        // 关键：让 TextView 宽度跟随 SwiftUI 布局，从而触发正确的自动换行
+        textView.translatesAutoresizingMaskIntoConstraints = false
+        textView.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        textView.setContentHuggingPriority(.required, for: .vertical)
+        textView.setContentCompressionResistancePriority(.required, for: .vertical)
+
+        // 自定义菜单
+        UIMenuController.shared.menuItems = [
+            UIMenuItem(title: "下划线", action: #selector(UnifiedTextView.highlightAction))
+        ]
+
+        return textView
+    }
+
+    func updateUIView(_ uiView: UITextView, context: Context) {
+        context.coordinator.render(text: text, on: uiView, fontScale: fontScale)
+        uiView.invalidateIntrinsicContentSize()
+    }
+
+    // 让 SwiftUI 正确计算高度，避免内容被截断（iOS 17+）
+    @available(iOS 17.0, *)
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize {
+        let targetWidth = proposal.width ?? uiView.bounds.width
+        let fit = uiView.sizeThatFits(CGSize(width: targetWidth, height: .greatestFiniteMagnitude))
+        return CGSize(width: targetWidth, height: fit.height)
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(articleId: articleId, articleTitle: articleTitle, articleImageUrl: articleImageUrl, annotationManager: annotationManager)
+    }
+
+    class Coordinator: NSObject, UITextViewDelegate {
+        let articleId: String
+        let articleTitle: String
+        let articleImageUrl: String?
+        weak var annotationManager: AnnotationManager?
+
+        init(articleId: String, articleTitle: String, articleImageUrl: String?, annotationManager: AnnotationManager) {
+            self.articleId = articleId
+            self.articleTitle = articleTitle
+            self.articleImageUrl = articleImageUrl
+            self.annotationManager = annotationManager
+        }
+
+        func render(text: String, on textView: UITextView, fontScale: Double) {
+            let paragraphStyle = NSMutableParagraphStyle()
+            paragraphStyle.lineSpacing = 8
+            paragraphStyle.paragraphSpacing = 24
+            // 使用两端对齐以减少右缘参差，同时保留首行缩进
+            paragraphStyle.alignment = .justified
+            paragraphStyle.firstLineHeadIndent = 18 // 约等于四个空格
+            // 右侧尾缩进（负值表示相对容器右侧向内收缩几个点）
+            paragraphStyle.tailIndent = -2
+            // 提升换行质量：开启连字符与标准/推出策略，避免末尾单字符换行
+            paragraphStyle.hyphenationFactor = 0.7
+            paragraphStyle.allowsDefaultTighteningForTruncation = true
+            if #available(iOS 14.0, *) {
+                paragraphStyle.lineBreakStrategy = [.standard, .pushOut]
+            }
+
+            // 归一化段落：删去空行，统一用单个 \n 分隔，避免“原文本空行 + paragraphSpacing”叠加导致的大间距
+            let normalized: String = {
+                let unix = text.replacingOccurrences(of: "\r\n", with: "\n")
+                let parts = unix.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+                let nonEmpty = parts.filter { !$0.isEmpty }
+                return nonEmpty.joined(separator: "\n")
+            }()
+
+            let attr = NSMutableAttributedString(string: normalized)
+            attr.addAttributes([
+                .font: serifFont(ofSize: 18 * fontScale),
+                .foregroundColor: UIColor.label,
+                .paragraphStyle: paragraphStyle
+            ], range: NSRange(location: 0, length: attr.length))
+
+            let highlights = annotationManager?.annotations.first(where: { $0.articleId == articleId })?.highlightedRanges ?? []
+            for h in highlights {
+                let r = NSRange(location: h.startIndex, length: max(0, h.endIndex - h.startIndex))
+                guard r.location >= 0, r.location + r.length <= attr.length else { continue }
+                let style = NSUnderlineStyle.thick.rawValue | NSUnderlineStyle.byWord.rawValue
+                attr.addAttribute(.underlineStyle, value: style, range: r)
+                attr.addAttribute(.underlineColor, value: UIColor.systemBlue.withAlphaComponent(0.9), range: r)
+            }
+
+            textView.attributedText = attr
+            textView.textAlignment = .justified
+            textView.textContainer.lineBreakMode = .byWordWrapping
+            textView.textContainer.maximumNumberOfLines = 0
+            textView.textContainer.widthTracksTextView = true
+            textView.isScrollEnabled = false
+            textView.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            textView.setNeedsLayout()
+            textView.layoutIfNeeded()
+            // 同步高度，避免截断
+            // 使用 sizeToFit 让 contentSize 与布局一致，避免部分设备上高度不同步
+            let targetWidth = textView.bounds.width
+            let fit = textView.sizeThatFits(CGSize(width: targetWidth, height: .greatestFiniteMagnitude))
+            if abs(textView.bounds.height - fit.height) > 1 {
+                textView.frame.size.height = fit.height
+            }
+        }
+
+        func textViewDidChangeSelection(_ textView: UITextView) {
+            if textView.selectedRange.length > 0 {
+                UIMenuController.shared.showMenu(from: textView, rect: textView.firstRect(for: textView.selectedTextRange!))
+            }
+        }
+    }
+}
+
+private func serifFont(ofSize size: CGFloat) -> UIFont {
+    if let descriptor = UIFontDescriptor.preferredFontDescriptor(withTextStyle: .body).withDesign(.serif) {
+        return UIFont(descriptor: descriptor, size: size)
+    }
+    return UIFont.systemFont(ofSize: size)
+}
+
+class UnifiedTextView: UITextView {
+    weak var coordinator: UnifiedSelectableTextView.Coordinator?
+    weak var annotationManager: AnnotationManager?
+    var articleId: String?
+    var articleTitle: String?
+    var articleImageUrl: String?
+
+    override var intrinsicContentSize: CGSize {
+        // 高度随内容而变，宽度由外部约束决定
+        let targetWidth = bounds.width > 0 ? bounds.width : UIScreen.main.bounds.width
+        let fit = sizeThatFits(CGSize(width: targetWidth, height: .greatestFiniteMagnitude))
+        return CGSize(width: UIView.noIntrinsicMetric, height: fit.height)
+    }
+
+    private var lastIntrinsicWidth: CGFloat = 0
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        // 仅在宽度显著变化时才刷新内在尺寸，避免反复触发布局
+        let w = bounds.width.rounded()
+        if abs(w - lastIntrinsicWidth) > 0.5 {
+            lastIntrinsicWidth = w
+            invalidateIntrinsicContentSize()
+        }
+    }
+
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(copy(_:)) { return selectedRange.length > 0 }
+        if action == #selector(highlightAction) { return selectedRange.length > 0 }
+        return false
+    }
+
+    @objc func highlightAction() {
+        guard let annotationManager = annotationManager, let articleId = articleId, let articleTitle = articleTitle else { return }
+        guard let range = selectedRange.nonEmpty else { return }
+        let h = HighlightRange(startIndex: range.location, endIndex: range.location + range.length, paragraphIndex: 0)
+        annotationManager.addHighlight(articleId: articleId, articleTitle: articleTitle, articleImageUrl: articleImageUrl, range: h)
+
+        // 立即应用到当前文本
+        let attr = NSMutableAttributedString(attributedString: attributedText ?? NSAttributedString())
+        let style = NSUnderlineStyle.thick.rawValue | NSUnderlineStyle.byWord.rawValue
+        attr.addAttribute(.underlineStyle, value: style, range: range)
+        attr.addAttribute(.underlineColor, value: UIColor.systemBlue.withAlphaComponent(0.9), range: range)
+        attributedText = attr
+        selectedRange = NSRange(location: 0, length: 0)
+        // 内容改变，刷新高度
+        setNeedsLayout()
+        invalidateIntrinsicContentSize()
+    }
+}
+
+// 旧的叠加实现（为兼容暂保留）
+struct SelectableOverlay: UIViewRepresentable {
+    let text: String
+    let fontScale: Double
+    let articleId: String
+    let articleTitle: String
+    let articleImageUrl: String?
+    let annotationManager: AnnotationManager
+
+    func makeUIView(context: Context) -> UITextView {
+        let textView = CustomTextView()
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.backgroundColor = .clear
+        textView.textColor = .clear // 文本透明，但保持布局
+        textView.text = text
+        textView.font = serifFont(ofSize: 18 * fontScale)
+        textView.textContainerInset = .zero
+        textView.textContainer.lineFragmentPadding = 0
+        textView.setContentHuggingPriority(.required, for: .vertical)
+        textView.setContentCompressionResistancePriority(.required, for: .vertical)
+        textView.delegate = context.coordinator
+
+        // 设置批注管理器和文章信息
+        textView.setup(with: annotationManager, articleId: articleId, articleTitle: articleTitle, articleImageUrl: articleImageUrl)
+
+        // 自定义菜单
+        UIMenuController.shared.menuItems = [
+            UIMenuItem(title: "下划线", action: #selector(CustomTextView.highlightAction))
+        ]
+
+        return textView
+    }
+
+    func updateUIView(_ uiView: UITextView, context: Context) {
+        uiView.text = text
+        uiView.font = serifFont(ofSize: 18 * fontScale)
+    }
+
+    private func serifFont(ofSize size: CGFloat) -> UIFont {
+        if let descriptor = UIFontDescriptor.preferredFontDescriptor(withTextStyle: .body).withDesign(.serif) {
+            return UIFont(descriptor: descriptor, size: size)
+        }
+        return UIFont.systemFont(ofSize: size)
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    class Coordinator: NSObject, UITextViewDelegate {
+        let parent: SelectableOverlay
+
+        init(_ parent: SelectableOverlay) {
+            self.parent = parent
+        }
+
+        func textViewDidChangeSelection(_ textView: UITextView) {
+            print("Selection changed: length=\(textView.selectedRange.length), location=\(textView.selectedRange.location)")
+            if textView.selectedRange.length > 0 {
+                print("Showing menu for selection")
+                UIMenuController.shared.showMenu(from: textView, rect: textView.firstRect(for: textView.selectedTextRange!))
+            }
+        }
+    }
+}
+
+class CustomTextView: UITextView {
+    weak var annotationManager: AnnotationManager?
+    var articleId: String?
+    var articleTitle: String?
+    var articleImageUrl: String?
+
+    func setup(with manager: AnnotationManager, articleId: String, articleTitle: String, articleImageUrl: String?) {
+        self.annotationManager = manager
+        self.articleId = articleId
+        self.articleTitle = articleTitle
+        self.articleImageUrl = articleImageUrl
+    }
+
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(copy(_:)) { return selectedRange.length > 0 }
+        if action == #selector(highlightAction) { return selectedRange.length > 0 }
+        return false
+    }
+
+    @objc func highlightAction() {
+        print("Highlight action triggered")
+        guard let range = selectedRange.nonEmpty,
+              let articleId = articleId,
+              let articleTitle = articleTitle,
+              let annotationManager = annotationManager else {
+            print("Missing required data for highlight action")
+            return
+        }
+
+        print("Creating highlight range: location=\(range.location), length=\(range.length)")
+
+        // 创建下划线范围
+        let highlightRange = HighlightRange(
+            startIndex: range.location,
+            endIndex: range.location + range.length,
+            paragraphIndex: 0
+        )
+
+        // 添加到数据管理器
+        annotationManager.addHighlight(
+            articleId: articleId,
+            articleTitle: articleTitle,
+            articleImageUrl: articleImageUrl,
+            range: highlightRange
+        )
+
+        print("Highlight added successfully")
+
+        // 取消选择
+        selectedRange = NSRange(location: 0, length: 0)
+
+        // 发送通知，让父视图知道下划线已更新
+        NotificationCenter.default.post(name: NSNotification.Name("HighlightUpdated"), object: nil)
+    }
+}
+
+struct AnnotationCard: View {
+    let annotation: ArticleAnnotation
+    @State private var isHovered: Bool = false
+
+    var body: some View {
+        NavigationLink(destination: ArticleDetailView(article: createArticleFromAnnotation())) {
+            VStack(alignment: .leading, spacing: 12) {
+                // Article info
+                HStack(spacing: 12) {
+                    // Article image
+                    AsyncImage(url: URL(string: annotation.articleImageUrl ?? "")) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .scaledToFill()
+                        case .empty:
+                            ZStack {
+                                Color.gray.opacity(0.1)
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                            }
+                        case .failure:
+                            ZStack {
+                                Color.gray.opacity(0.1)
+                                Image(systemName: "photo")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(.gray)
+                            }
+                        @unknown default:
+                            Color.gray.opacity(0.1)
+                        }
+                    }
+                    .frame(width: 80, height: 60)
+                    .clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                    // Article details
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(annotation.articleTitle)
+                            .font(AppFonts.body(16, weight: .semibold))
+                            .foregroundColor(AppColors.textPrimary)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+
+                        HStack(spacing: 8) {
+                            Text("\(annotation.highlightedRanges.count) 个下划线")
+                                .font(AppFonts.body(12))
+                                .foregroundColor(AppColors.textSecondary)
+
+                            Spacer()
+
+                            Text(formatDate(annotation.lastUpdated))
+                                .font(AppFonts.body(12))
+                                .foregroundColor(AppColors.textTertiary)
+                        }
+                    }
+
+                    Spacer()
+                }
+            }
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color.white)
+                    .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 2)
+            )
+            .scaleEffect(isHovered ? 1.02 : 1.0)
+            .animation(.easeInOut(duration: 0.2), value: isHovered)
+        }
+        .buttonStyle(PlainButtonStyle())
+        .onHover { hovering in
+            isHovered = hovering
+        }
+    }
+
+    private func createArticleFromAnnotation() -> APIService.Article {
+        return APIService.Article(
+            id: Int(annotation.articleId) ?? 0,
+            transcriptId: annotation.articleId,
+            title: annotation.articleTitle,
+            speaker: "",
+            url: "",
+            description: "",
+            duration: "",
+            views: 0,
+            publishedAt: "",
+            language: "en",
+            englishTranscript: "",
+            chineseTranscript: "",
+            english: "",
+            chinese: "",
+            topics: [],
+            createDate: "",
+            updateDate: "",
+            imgUrl: annotation.articleImageUrl
+        )
+    }
+
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MM月dd日"
+        return formatter.string(from: date)
+    }
+}
+
+// MARK: - Extensions
+
+extension NSRange {
+    var nonEmpty: NSRange? {
+        length > 0 ? self : nil
     }
 }
 
